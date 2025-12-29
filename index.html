@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画蛇添足：一念之差的选择</title>
+    <link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=DotGothic16&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #2c2a3e;
+            --ui-bg: #4a455a;
+            --ui-border: #d4b89e;
+            --text-color: #ffffff;
+            --highlight: #f9d857;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            /* 使用ZCOOL XiaoWei作为中文字体，DotGothic16作为备用 */
+            font-family: 'ZCOOL XiaoWei', 'DotGothic16', sans-serif;
+            overflow: hidden;
+            color: white;
+            user-select: none;
+        }
+
+        #game-container {
+            width: 960px;
+            height: 540px;
+            background-color: #000;
+            position: relative;
+            box-shadow: 0 0 60px rgba(0,0,0,0.8);
+            border: 4px solid var(--ui-border);
+            display: flex;
+            flex-direction: column;
+            image-rendering: pixelated; 
+            image-rendering: crisp-edges;
+        }
+
+        /* --- 场景层 --- */
+        #scene-layer {
+            flex: 1; 
+            height: 75%;
+            position: relative;
+            background-size: 960px 405px; /* Adjusted to fit the UI height */
+            background-position: center bottom;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            border-bottom: 4px solid var(--ui-border);
+            background-color: #333;
+            transition: background-image 0.5s ease-in-out;
+        }
+
+        /* 角色/物品 Sprite */
+        .game-sprite {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            filter: drop-shadow(4px 4px 0px rgba(0,0,0,0.3));
+            transition: all 0.3s;
+            display: none; /* 默认隐藏 */
+        }
+        
+        /* 第一人称视角的手和脚 */
+        .first-person-view .game-sprite { display: block; }
+        #player-hand {
+            width: 150px;
+            height: auto;
+            bottom: 20px;
+            right: 20px;
+            left: auto;
+            transform: none;
+            transition: all 0.5s ease-out;
+            opacity: 0;
+        }
+        .hand-visible { opacity: 1 !important; }
+        .hand-raise { bottom: 150px !important; transform: rotate(-15deg) !important; }
+        .hand-grab { bottom: 80px !important; right: 280px !important; }
+        .hand-draw { animation: drawing 2s ease-in-out forwards; }
+        .hand-wait { right: -100px !important; } /* C选项，手移出屏幕 */
+        .hand-drop { bottom: -200px !important; opacity: 0 !important; } /* A选项，手无力垂下 */
+        
+        @keyframes drawing {
+            0% { transform: translate(0, 0) rotate(0); }
+            20% { transform: translate(-30px, -15px) rotate(5deg); }
+            40% { transform: translate(20px, -5px) rotate(-8deg); }
+            60% { transform: translate(-40px, 0px) rotate(10deg); }
+            80% { transform: translate(10px, -10px) rotate(-5deg); }
+            100% { transform: translate(0, 0) rotate(0); opacity: 0; }
+        }
+
+        /* 其他角色 */
+        .companion-sprite {
+            position: absolute;
+            height: 200px;
+            bottom: 50px;
+            filter: drop-shadow(3px 3px 0 rgba(0,0,0,0.2));
+            transition: all 0.5s;
+        }
+        #companionA { left: 65%; transform: scaleX(-1); }
+        #companionB { left: 20%; }
+        #companionC { left: 35%; }
+        
+        .companion-jump { animation: jump 0.5s ease-in-out; }
+        @keyframes jump { 0%, 100% { transform: translateY(0) scaleX(-1); } 50% { transform: translateY(-20px) scaleX(-1); } }
+
+
+        /* --- UI层 --- */
+        #ui-layer { 
+            height: 135px; /* Slightly reduced height for better scene view */
+            background-color: var(--ui-bg); 
+            display: flex; 
+            padding: 10px 15px; 
+            box-sizing: border-box; 
+            gap: 15px; 
+            position: relative; 
+            flex-shrink: 0; 
+            z-index: 30; 
+        }
+        #portrait-frame { 
+            height: 100%; 
+            aspect-ratio: 1 / 1; 
+            background: #252130; 
+            border: 3px solid var(--ui-border); 
+            flex-shrink: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.6); 
+            border-radius: 4px; 
+        }
+        #portrait-img { width: 85%; height: 85%; object-fit: contain; }
+        #dialogue-area { flex-grow: 1; display: flex; flex-direction: column; position: relative; padding-right: 40px; }
+        #name-tag { 
+            background-color: var(--highlight); 
+            color: #3e2723; 
+            padding: 4px 12px; 
+            border-radius: 2px; 
+            font-size: 20px; 
+            font-weight: bold; 
+            width: fit-content; 
+            margin-bottom: 5px; 
+            border: 1px solid #fff; 
+            letter-spacing: 2px;
+        }
+        #text-content { 
+            font-size: 22px; 
+            line-height: 1.6; 
+            color: #f0f0f0; 
+            text-shadow: 2px 2px 0 #000; 
+        }
+        #choices-box { 
+            position: absolute; 
+            bottom: 5px; 
+            left: 0; 
+            right: 0;
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            align-items: center; 
+            z-index: 20; 
+        }
+        .pixel-btn { 
+            background: #fff; 
+            color: #333; 
+            border: 3px solid #555; 
+            padding: 8px 18px; 
+            font-family: inherit; 
+            font-size: 20px; 
+            cursor: pointer; 
+            box-shadow: 0 5px 0 #333; 
+            text-align: center; 
+            border-radius: 3px; 
+            transition: all 0.1s; 
+            width: 80%;
+            max-width: 600px;
+        }
+        .pixel-btn:hover { 
+            background: var(--highlight); 
+            transform: translateY(-2px); 
+            box-shadow: 0 7px 0 #333;
+            border-color: #fbc02d; 
+            color: #000; 
+        }
+        .pixel-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #333;
+        }
+
+        #restart-btn-container { position: absolute; top: 0; right: 0; }
+        #restart-btn { background: transparent; border: none; color: #aaa; font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px; transition: all 0.2s; line-height: 1; font-family: sans-serif; }
+        #restart-btn:hover { color: #ff5252; transform: rotate(90deg); }
+        .next-indicator { position: absolute; bottom: 5px; right: 5px; width: 12px; height: 12px; background: #fff; clip-path: polygon(0 0, 0% 100%, 100% 50%); animation: blink 1s infinite; cursor: pointer; }
+        @keyframes blink { 0%,100% {opacity:1} 50% {opacity:0.3} }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="scene-layer">
+        <!-- 游戏角色和物品 -->
+        <img id="teacher-sprite" class="game-sprite" src="">
+        <img id="wine-pot-sprite" class="game-sprite" src="">
+        <img id="companionA" class="companion-sprite" src="" style="display:none;">
+        <img id="companionB" class="companion-sprite" src="" style="display:none;">
+        <img id="companionC" class="companion-sprite" src="" style="display:none;">
+        
+        <!-- 第一人称元素 -->
+        <div class="first-person-view">
+            <img id="player-hand" class="game-sprite" src="">
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="portrait-frame" style="visibility: hidden;">
+            <img id="portrait-img" src="">
+        </div>
+
+        <div id="dialogue-area">
+            <div id="restart-btn-container">
+                <button id="restart-btn" onclick="restartGame()">↻</button>
+            </div>
+
+            <div id="name-tag">系统</div>
+            <div id="text-content">正在载入像素世界...</div>
+            <div id="choices-box"></div>
+            <div id="next-btn" class="next-indicator" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function svgToUrl(svgStr) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr); }
+
+    /* --- 1. 背景资源 --- */
+    const svgBgClassroom = `<svg width="960" height="405" viewBox="0 0 960 405" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="960" height="405" fill="#f0e4d4"/><rect y="320" width="960" height="85" fill="#a58a79"/><path d="M0 340 H960 M0 360 H960 M0 380 H960" stroke="#795548" stroke-width="2"/><rect x="230" y="40" width="500" height="250" fill="#4a3c31"/> <rect x="250" y="60" width="460" height="210" fill="#2d4531"/> <rect x="250" y="270" width="460" height="15" fill="#8d6e63"/><text x="480" y="170" font-family="'ZCOOL XiaoWei', 'DotGothic16', sans-serif" font-weight="bold" font-size="60" fill="#FFFFFF" text-anchor="middle">画蛇添足</text><text x="680" y="240" font-family="'ZCOOL XiaoWei', 'DotGothic16', sans-serif" font-weight="bold" font-size="20" fill="#CCCCCC" text-anchor="end">寓言小课堂</text><rect x="50" y="200" width="100" height="120" fill="#c5a88a"/> <rect x="40" y="200" width="120" height="20" fill="#a58a79"/><rect x="70" y="220" width="20" height="100" fill="#e7d6c4"/> <rect x="110" y="220" width="20" height="100" fill="#e7d6c4"/><rect x="810" y="280" width="60" height="60" fill="#d86a43"/> <rect x="800" y="280" width="80" height="15" fill="#bf4c2c"/> <rect x="850" y="220" width="5" height="70" fill="#33691E"/> <rect x="830" y="230" width="5" height="60" fill="#33691E"/> <rect x="870" y="240" width="5" height="50" fill="#33691E"/><rect x="800" y="200" width="40" height="40" fill="#2E7D32"/> <rect x="810" y="210" width="20" height="20" fill="#4CAF50"/></svg>`;
+    const svgBgCourtyard = `<svg width="960" height="405" viewBox="0 0 960 405" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="960" height="405" fill="#a8c8e8"/><rect y="300" width="960" height="105" fill="#e0c8b0"/><rect x="600" y="100" width="360" height="200" fill="#d4aa8c"/> <rect x="600" y="280" width="360" height="20" fill="#b08a6e"/> <rect x="620" y="120" width="80" height="160" fill="#b08a6e" opacity="0.6"/> <rect x="720" y="120" width="80" height="160" fill="#b08a6e" opacity="0.6"/> <rect x="820" y="120" width="80" height="160" fill="#b08a6e" opacity="0.6"/><path d="M600 100 L550 50 L960 50 L960 100 Z" fill="#b88868"/> <path d="M550 50 L520 20 L960 20 L960 50 Z" fill="#a07050"/><rect x="50" y="150" width="180" height="150" fill="#888"/> <rect x="70" y="180" width="140" height="120" fill="#aaa"/><rect x="90" y="200" width="100" height="100" fill="#ccc"/><path d="M250 220 C 300 200, 350 250, 400 220 S 500 250, 550 220" stroke="#68a8d8" stroke-width="15" fill="none"/> <path d="M260 240 C 310 220, 360 270, 410 240 S 510 270, 560 240" stroke="#88c8e8" stroke-width="10" fill="none"/></svg>`;
+    const svgBgGround = `<svg width="960" height="405" viewBox="0 0 960 405" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="960" height="405" fill="#f0e4d4"/><rect y="250" width="960" height="155" fill="#d2b48c"/><rect x="0" y="250" width="960" height="10" fill="#b89a74"/> <g opacity="0.4"><rect x="100" y="280" width="10" height="5" fill="#a08468"/> <rect x="300" y="320" width="15" height="8" fill="#a08468"/><rect x="500" y="270" width="8" height="8" fill="#a08468"/><rect x="750" y="350" width="12" height="6" fill="#a08468"/><rect x="880" y="290" width="5" height="10" fill="#a08468"/></g></svg>`;
+    const svgBgGroundDrawn = `<svg width="960" height="405" viewBox="0 0 960 405" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="960" height="405" fill="#f0e4d4"/><rect y="250" width="960" height="155" fill="#d2b48c"/><rect x="0" y="250" width="960" height="10" fill="#b89a74"/><path d="M300 300 C 350 280, 450 340, 500 320 C 550 300, 600 350, 650 340" stroke="#8b4513" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M640 330 L 660 320 L 655 335 Z" fill="#8b4513"/></svg>`;
+    const svgBgGroundWithFeet = `<svg width="960" height="405" viewBox="0 0 960 405" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="960" height="405" fill="#f0e4d4"/><rect y="250" width="960" height="155" fill="#d2b48c"/><rect x="0" y="250" width="960" height="10" fill="#b89a74"/><path d="M300 300 C 350 280, 450 340, 500 320 C 550 300, 600 350, 650 340" stroke="#8b4513" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M640 330 L 660 320 L 655 335 Z" fill="#8b4513"/><g stroke="#8b4513" stroke-width="4" fill="none"><path d="M400 320 L 390 330 M400 320 L 410 330"/> <path d="M480 325 L 470 335 M480 325 L 490 335"/> <path d="M560 335 L 550 345 M560 335 L 570 345"/></g></svg>`;
+
+    /* --- 2. 角色/物品资源 --- */
+    const svgTeacher = `<svg width="200" height="350" viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><g transform="translate(0, 8)"><path d="M20 4 H44 V20 H20 Z" fill="#3c2f2f"/> <path d="M12 18 H52 V44 H12 Z" fill="#f4c2c2"/><path d="M22 18 H42 V22 H22 Z" fill="#ffe0b2"/><path d="M26 24 H38 V30 H26 Z" fill="#ffe0b2"/><path d="M24 22 H40 V24 H24 Z" fill="#3c2f2f" opacity="0.1"/><rect x="18" y="24" width="8" height="8" fill="#555"/> <rect x="20" y="25" width="4" height="6" fill="#fff"/> <rect x="38" y="24" width="8" height="8" fill="#555"/> <rect x="40" y="25" width="4" height="6" fill="#fff"/><path d="M31 32 H33" stroke="#e57373" stroke-width="2"/><path d="M12 44 H52 V68 H12 Z" fill="#82b1ff"/> <rect x="24" y="44" width="16" height="4" fill="#6495ed"/><rect x="12" y="68" width="16" height="8" fill="#3c2f2f"/> <rect x="36" y="68" width="16" height="8" fill="#3c2f2f"/></g></svg>`;
+    // 霓老师头像 (已替换)
+    const svgTeacherHead = `<svg width="100" height="100" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><path d="M24 4 H40 V16 H24 Z" fill="#2D1B17"/> <path d="M32 2 H36 V14 H34 V16 H32 Z" fill="#AA00FF"/><path d="M8 6 H22 V20 H8 Z" fill="#3E2723"/> <path d="M11 9 H19 V17 H11 Z" fill="#CE93D8"/><path d="M42 6 H56 V20 H42 Z" fill="#3E2723"/> <path d="M45 9 H53 V17 H45 Z" fill="#CE93D8"/><path d="M12 20 H52 V46 H48 V48 H16 V46 H12 Z" fill="#3E2723"/> <path d="M22 36 H42 V48 H22 Z" fill="#FFECB3"/><path d="M12 20 H52 V32 H14 V22 H12 Z" fill="#F8BBD0" opacity="0.6"/> <path d="M12 20 H52 V22 H12 Z" fill="#F8BBD0"/><rect x="16" y="32" width="12" height="10" fill="#263238"/> <rect x="17" y="33" width="10" height="8" fill="#00BCD4"/> <rect x="19" y="34" width="6" height="6" fill="#006064"/> <rect x="17" y="33" width="4" height="4" fill="#FFF"/><rect x="36" y="32" width="12" height="10" fill="#263238"/> <rect x="37" y="33" width="10" height="8" fill="#00BCD4"/> <rect x="39" y="34" width="6" height="6" fill="#006064"/> <rect x="37" y="33" width="4" height="4" fill="#FFF"/><rect x="31" y="44" width="2" height="2" fill="#F06292"/></svg>`;
+    
+    const svgWinePot = `<svg width="100" height="150" viewBox="0 0 64 96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><g transform="translate(0, 16)"><rect x="26" y="0" width="12" height="10" fill="#a1887f"/> <rect x="28" y="2" width="8" height="6" fill="#795548"/><path d="M16 10 H48 V20 H16 Z" fill="#c7a589"/> <path d="M12 20 H52 V60 Q48 70, 32 70 Q16 70, 12 60 Z" fill="#a1887f"/><path d="M14 22 H50 V58 Q47 66, 32 66 Q17 66, 14 58 Z" fill="#c7a589"/><rect x="18" y="25" width="4" height="30" fill="#a1887f" opacity="0.5"/></g></svg>`;
+    const svgCompanionAHead = `<svg width="100" height="100" viewBox="8 16 32 32" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/><rect x="28" y="20" width="8" height="8" fill="#3e2723"/><path d="M23 32 h2" stroke-width="2" stroke="#3e2723"/></svg>`;
+    const svgCompanionBHead = `<svg width="100" height="100" viewBox="8 16 32 32" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/><rect x="28" y="20" width="8" height="8" fill="#3e2723"/><path d="M20 30 q4 4 8 0" stroke-width="2" stroke="#3e2723" fill="none"/></svg>`;
+    const svgCompanionCHead = `<svg width="100" height="100" viewBox="8 16 32 32" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/><rect x="28" y="20" width="8" height="8" fill="#3e2723"/><path d="M20 32 q4 -4 8 0" stroke-width="2" stroke="#3e2723" fill="none"/></svg>`;
+    const svgNobleHead = `<svg width="100" height="100" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="16" y="8" width="32" height="12" fill="#d4af37"/><path d="M12 20 H52 V48 H12 Z" fill="#e1c699"/><rect x="20" y="28" width="6" height="6" fill="#222"/><rect x="38" y="28" width="6" height="6" fill="#222"/><path d="M24 40 H40" stroke="#a0522d" stroke-width="2"/></svg>`;
+
+    const svgCompanionA = `<svg width="100" height="200" viewBox="0 0 48 96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/> <rect x="28" y="20" width="8" height="8" fill="#3e2723"/><rect x="8" y="40" width="32" height="40" fill="#4fc3f7"/> <rect x="16" y="40" width="16" height="4" fill="#1e88e5"/><rect x="4" y="80" width="16" height="8" fill="#3e2723"/> <rect x="28" y="80" width="16" height="8" fill="#3e2723"/></svg>`;
+    const svgCompanionB = `<svg width="100" height="200" viewBox="0 0 48 96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/> <rect x="28" y="20" width="8" height="8" fill="#3e2723"/><rect x="8" y="40" width="32" height="40" fill="#ff8a65"/> <rect x="16" y="40" width="16" height="4" fill="#e65100"/><rect x="4" y="80" width="16" height="8" fill="#3e2723"/> <rect x="28" y="80" width="16" height="8" fill="#3e2723"/></svg>`;
+    const svgCompanionC = `<svg width="100" height="200" viewBox="0 0 48 96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect x="8" y="16" width="32" height="24" fill="#ffecb3"/><rect x="12" y="20" width="8" height="8" fill="#3e2723"/> <rect x="28" y="20" width="8" height="8" fill="#3e2723"/><rect x="8" y="40" width="32" height="40" fill="#9ccc65"/> <rect x="16" y="40" width="16" height="4" fill="#558b2f"/><rect x="4" y="80" width="16" height="8" fill="#3e2723"/> <rect x="28" y="80" width="16" height="8" fill="#3e2723"/></svg>`;
+    const svgHand = `<svg width="150" height="180" viewBox="0 0 60 72" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><path d="M10 40 L0 50 V72 H60 V40 H50 L40 50 L30 40 Z" fill="#ffecb3"/><path d="M10 0 H50 V40 H10 Z" fill="#8d6e63"/></svg>`;
+
+    const assets = {
+        bg: { 
+            classroom: svgToUrl(svgBgClassroom),
+            courtyard: svgToUrl(svgBgCourtyard),
+            ground: svgToUrl(svgBgGround),
+            groundDrawn: svgToUrl(svgBgGroundDrawn),
+            groundWithFeet: svgToUrl(svgBgGroundWithFeet)
+        },
+        sprites: {
+            teacher: svgToUrl(svgTeacher),
+            winePot: svgToUrl(svgWinePot),
+            companionA: svgToUrl(svgCompanionA),
+            companionB: svgToUrl(svgCompanionB),
+            companionC: svgToUrl(svgCompanionC),
+            hand: svgToUrl(svgHand)
+        },
+        head: { 
+            teacher: svgToUrl(svgTeacherHead),
+            noble: svgToUrl(svgNobleHead),
+            companionA: svgToUrl(svgCompanionAHead),
+            companionB: svgToUrl(svgCompanionBHead),
+            companionC: svgToUrl(svgCompanionCHead),
+        }
+    };
+
+    // 剧情脚本
+    const script = [
+        // 序章
+        {
+            id: 'start',
+            bg: assets.bg.classroom,
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "同学们好！欢迎来到霓老师的寓言小课堂。",
+            next: 'intro_1'
+        },
+        {
+            id: 'intro_1',
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "今天我们要学习的成语是‘画蛇添足’。与其只听故事，不如我们一起进入故事，亲身体验一番吧！",
+            next: 'intro_2'
+        },
+        {
+            id: 'intro_2',
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "你将扮演故事的主人公，你的每个选择，都会导向不同的结局。准备好了吗？时空之旅即将开始！",
+            choices: [
+                { txt: "准备好了，出发！", to: 'act1_start' }
+            ]
+        },
+        // 第一幕
+        {
+            id: 'act1_start',
+            bg: assets.bg.courtyard,
+            sprite_remove: ['#teacher-sprite'], // 确保老师的全身像被移除
+            name: "画外音",
+            text: "一阵眩晕后，你发现自己身处古代楚国的庭院中。你和几位同伴刚为一位贵族完成了祭祀仪式。",
+            next: 'act1_1'
+        },
+        {
+            id: 'act1_1',
+            bg: assets.bg.courtyard,
+            sprite: { id: '#wine-pot-sprite', src: assets.sprites.winePot, style: 'height: 120px; bottom: 80px; left: 50%;' },
+            head: assets.head.noble,
+            name: "贵族",
+            text: "各位辛苦了！为表谢意，这壶美酒就赏赐给你们吧！",
+            next: 'act1_2'
+        },
+        {
+            id: 'act1_2',
+            companions: ['A', 'B', 'C'],
+            head: assets.head.companionB,
+            name: "同伴B",
+            text: "太好了！可是一壶酒我们这么多人，要怎么分才公平呢？",
+            next: 'act1_3'
+        },
+        {
+            id: 'act1_3',
+            head: assets.head.companionC,
+            name: "同伴C",
+            text: "是啊，直接分的话，肯定会有人多有人少，不公平。",
+            next: 'act2_start'
+        },
+        // 第二幕
+        {
+            id: 'act2_start',
+            head: assets.head.companionA,
+            name: "同伴A",
+            text: "我有个主意！我们来比赛画蛇，谁最快在地上画好一条蛇，这壶酒就归谁！怎么样？",
+            next: 'act2_1'
+        },
+        {
+            id: 'act2_1',
+            head: null, // “众人”没有特定头像
+            name: "众人",
+            text: "好主意！这个办法很公平！",
+            next: 'act2_2'
+        },
+        {
+            id: 'act2_2',
+            bg: assets.bg.ground,
+            sprite_remove: ['#wine-pot-sprite'],
+            companions_hide: true,
+            hand: { src: assets.sprites.hand, class: 'hand-visible' },
+            head: null,
+            name: "系统提示",
+            text: "说干就干！你拾起一根树枝，准备在松软的土地上作画。比赛正式开始！",
+            next: 'act2_3'
+        },
+        {
+            id: 'act2_3',
+            hand: { class: 'hand-visible hand-draw' },
+            head: null,
+            name: "你（心声）",
+            text: "（唰唰唰……）这可难不倒我。我的动作飞快，一条蛇的轮廓很快就成型了。",
+            next: 'act2_4'
+        },
+        {
+            id: 'act2_4',
+            bg: assets.bg.groundDrawn,
+            hand: { class: '' },
+            head: null,
+            name: "你（心声）",
+            text: "完成了！我第一个画好了！抬头看看其他人，他们都还在埋头苦干呢。",
+            next: 'act3_start'
+        },
+        // 第三幕 - 关键选择
+        {
+            id: 'act3_start',
+            bg: assets.bg.groundDrawn,
+            sprite: { id: '#wine-pot-sprite', src: assets.sprites.winePot, style: 'height: 120px; bottom: 80px; left: 40%;' },
+            hand: { src: assets.sprites.hand, class: 'hand-visible hand-grab' },
+            head: null,
+            name: "你（心声）",
+            text: "时间还绰绰有余。看着自己的作品，我心想：要不要再让它更完美一点呢？",
+            choices: [
+                { txt: "给我的蛇添上几只脚，让它看起来更威风。", to: 'ending_A_1' },
+                { txt: "拿起酒壶，立刻享用这胜利的果实。", to: 'ending_B_1' },
+                { txt: "放下树枝，拿起酒壶，在旁边耐心等待大家。", to: 'ending_C_1' }
+            ]
+        },
+        // 第四幕 - 结局
+        // 结局A: 画蛇添足
+        {
+            id: 'ending_A_1',
+            hand: { class: 'hand-visible hand-draw' },
+            bg: assets.bg.groundWithFeet,
+            head: null,
+            name: "你",
+            text: "（得意地给蛇添上脚）哈哈，这样看起来就厉害多了！",
+            next: 'ending_A_2'
+        },
+        {
+            id: 'ending_A_2',
+            hand: { class: 'hand-drop' },
+            companions: ['A'],
+            companionA_anim: 'jump',
+            head: assets.head.companionA,
+            name: "同伴A",
+            text: "我画好了！咦？蛇本来没有脚，你画的根本不是蛇！这酒应该归我！",
+            next: 'ending_A_3'
+        },
+        {
+            id: 'ending_A_3',
+            sprite_remove: ['#wine-pot-sprite'],
+            head: null,
+            name: "你（心声）",
+            text: "同伴一把抢过酒壶一饮而尽。看着自己画的“四不像”，我手中空空如也，追悔莫及...",
+            next: 'summary_A'
+        },
+        // 结局B: 独享美酒
+        {
+            id: 'ending_B_1',
+            hand: { class: 'hand-raise' },
+            head: null,
+            name: "你",
+            text: "不多此一举，胜利的果实当然要马上享用！真是好酒！（咕咚咕咚...）",
+            next: 'ending_B_2'
+        },
+        {
+            id: 'ending_B_2',
+            companions: ['A', 'B', 'C'],
+            head: assets.head.companionA,
+            name: "同伴A",
+            text: "恭喜你，动作真快！这酒理应归你。",
+            next: 'summary_B'
+        },
+        // 结局C: 共享喜悦
+        {
+            id: 'ending_C_1',
+            hand: { class: 'hand-wait' },
+            head: null,
+            name: "你（心声）",
+            text: "我拿起酒壶，安静地站在一旁等待。不一会儿，同伴们也都完成了。",
+            next: 'ending_C_2'
+        },
+        {
+            id: 'ending_C_2',
+            companions: ['A', 'B', 'C'],
+            head: assets.head.companionA,
+            name: "同伴A",
+            text: "你赢了比赛，怎么不喝呢？",
+            next: 'ending_C_3'
+        },
+        {
+            id: 'ending_C_3',
+            head: null,
+            name: "你",
+            text: "比赛的输赢是小事，大家的情谊才是大事。如此美酒，不如我们一同分享吧！",
+            next: 'ending_C_4'
+        },
+        {
+            id: 'ending_C_4',
+            head: null,
+            name: "众人",
+            text: "好啊！太棒了！你真是豁达！",
+            next: 'summary_C'
+        },
+        // 终章：总结
+        {
+            id: 'summary_A',
+            bg: assets.bg.classroom,
+            sprite: { id: '#teacher-sprite', src: assets.sprites.teacher, style: 'display: block;' },
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "看到了吗？你本已成功，却因为多此一举，反而失去了胜利。这就是‘画蛇添足’：做了多余的事，非但无益，反而会把事情办糟。",
+            choices: [{ txt: "再试一次", to: 'start' }],
+            endingTitle: "【结局：画蛇添足，一无所获】"
+        },
+        {
+            id: 'summary_B',
+            bg: assets.bg.classroom,
+            sprite: { id: '#teacher-sprite', src: assets.sprites.teacher, style: 'display: block;' },
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "你遵守规则，抓住了时机，赢得了胜利。这说明专注目标、不做多余的事是通往成功的捷径。你也可以再试试别的选择，看看会有什么不同哦。",
+            choices: [{ txt: "再试一次", to: 'start' }],
+            endingTitle: "【结局：遵守规则，赢得胜利】"
+        },
+        {
+            id: 'summary_C',
+            bg: assets.bg.classroom,
+            sprite: { id: '#teacher-sprite', src: assets.sprites.teacher, style: 'display: block;' },
+            head: assets.head.teacher,
+            name: "霓老师",
+            text: "你不仅赢得了比赛，更赢得了友谊。这让我们思考，规则之上还有人情与智慧，懂得分享有时会让你收获更多。",
+            choices: [{ txt: "再试一次", to: 'start' }],
+            endingTitle: "【结局：懂得分享，收获情谊】"
+        }
+    ];
+
+    const els = {
+        scene: document.getElementById('scene-layer'),
+        portraitFrame: document.getElementById('portrait-frame'),
+        portrait: document.getElementById('portrait-img'),
+        name: document.getElementById('name-tag'),
+        text: document.getElementById('text-content'),
+        choices: document.getElementById('choices-box'),
+        next: document.getElementById('next-btn'),
+        box: document.getElementById('dialogue-area'),
+        
+        // Sprites
+        teacher: document.getElementById('teacher-sprite'),
+        winePot: document.getElementById('wine-pot-sprite'),
+        companionA: document.getElementById('companionA'),
+        companionB: document.getElementById('companionB'),
+        companionC: document.getElementById('companionC'),
+        playerHand: document.getElementById('player-hand'),
+    };
+    
+    // 初始化同伴立绘
+    els.companionA.src = assets.sprites.companionA;
+    els.companionB.src = assets.sprites.companionB;
+    els.companionC.src = assets.sprites.companionC;
+    els.teacher.src = assets.sprites.teacher;
+
+    let typeInterval;
+    window.restartGame = function() { render('start'); }
+
+    function render(id) {
+        const node = script.find(s => s.id === id);
+        if(!node) {
+            console.error("Node not found:", id);
+            return;
+        }
+
+        // 清理点击事件和UI
+        els.box.onclick = null;
+        els.next.style.display = 'none';
+        els.choices.innerHTML = '';
+        clearInterval(typeInterval);
+
+        // --- 场景和精灵处理 ---
+        if (node.bg) els.scene.style.backgroundImage = `url('${node.bg}')`;
+        
+        if (node.sprite) {
+            const spriteEl = document.querySelector(node.sprite.id);
+            if (spriteEl) {
+                if (node.sprite.src) spriteEl.src = node.sprite.src;
+                spriteEl.style.cssText += node.sprite.style;
+                spriteEl.style.display = 'block';
+            }
+        }
+        if (node.sprite_remove) {
+            node.sprite_remove.forEach(id => {
+                const el = document.querySelector(id);
+                if (el) el.style.display = 'none';
+            });
+        }
+        
+        // 同伴显示/隐藏
+        if (node.companions) {
+             ['A', 'B', 'C'].forEach(c => {
+                els[`companion${c}`].style.display = node.companions.includes(c) ? 'block' : 'none';
+             });
+        }
+        if (node.companions_hide) {
+            ['A', 'B', 'C'].forEach(c => els[`companion${c}`].style.display = 'none');
+        }
+
+        if (node.companionA_anim) {
+            els.companionA.classList.add(node.companionA_anim);
+            setTimeout(() => els.companionA.classList.remove(node.companionA_anim), 500);
+        }
+        
+        // 手部处理
+        if (node.hand) {
+            if(node.hand.src) els.playerHand.src = node.hand.src;
+            els.playerHand.className = 'game-sprite ' + (node.hand.class || '');
+        }
+
+        // --- UI处理 ---
+        if (node.head) {
+            els.portrait.src = node.head;
+            els.portraitFrame.style.visibility = 'visible';
+        } else {
+            els.portraitFrame.style.visibility = 'hidden';
+        }
+
+        els.name.innerText = node.name;
+        
+        // --- 文本和控制处理 ---
+        let fullText = node.endingTitle ? `${node.text}\n\n${node.endingTitle}` : node.text;
+        els.text.innerText = '';
+        let i = 0;
+        
+        const typeWriter = () => {
+            if (i < fullText.length) {
+                els.text.innerText += fullText.charAt(i);
+                i++;
+                if (i >= fullText.length) {
+                    clearInterval(typeInterval);
+                    showControls(node);
+                }
+            }
+        };
+
+        const skipTyping = () => {
+            if (i < fullText.length) {
+                clearInterval(typeInterval);
+                els.text.innerText = fullText.replace(/\\n/g, '\n'); // 确保换行符正确显示
+                i = fullText.length;
+                showControls(node);
+            } else if (node.next && !node.choices) {
+                render(node.next);
+            }
+        };
+        
+        els.box.onclick = skipTyping;
+        typeInterval = setInterval(typeWriter, 40);
+    }
+
+    function showControls(node) {
+        if (node.choices) {
+            node.choices.forEach(c => {
+                let btn = document.createElement('button');
+                btn.className = 'pixel-btn';
+                btn.innerText = c.txt;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    render(c.to);
+                };
+                els.choices.appendChild(btn);
+            });
+        } else if (node.next) {
+            els.next.style.display = 'block';
+        }
+    }
+    
+    function resetGame() {
+        // Hide all dynamic sprites
+        [els.teacher, els.winePot, els.companionA, els.companionB, els.companionC, els.playerHand].forEach(el => {
+            el.style.display = 'none';
+        });
+        // Render start node
+        render('start');
+    }
+
+    window.onload = () => {
+        resetGame();
+    };
+
+</script>
+</body>
+</html>
